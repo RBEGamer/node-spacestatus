@@ -3,111 +3,64 @@ const async = require('async');
 const mqtt = require('mqtt');
 const ms = require('ms');
 
-const argv = require('yargs')
-    .usage('Usage: $0 --config config')
-    .argv;
 
-const ip = require('ip');
-const logger = require('./lib/logger');
-const Unifi = require('./lib/Collectors/Unifi');
+
+
 const Nmap = require('./lib/Collectors/Nmap');
 const CollectorRunner = require('./lib/CollectorRunner');
-const MySQL = require('./lib/Database/MySQL');
-const AliveHosts = require('./lib/Database/AliveHosts');
-const configurations = require('./lib/configurations');
 
-const config = configurations.getConfig(argv.config);
+const low = require('lowdb');
+const FileSync = require('lowdb/adapters/FileSync');
+const adapter = new FileSync('./mac_registrations.json');
+const db = low(adapter);
+
+const config = require('./config/default.js');
 
 const mqttClient = mqtt.connect('mqtt://' + config.mqtt.hostname);
-const mysql = new MySQL(config.mysql);
-const aliveHosts = new AliveHosts(mysql);
 
 const collector = new CollectorRunner();
 
-collector.add(new Unifi(config.unifi));
+
+
+//------ SETUP ------//
 collector.add(new Nmap(config.nmap));
 
-let lastDeviceCount = false;
-let lastMemberCount = false;
-let lastMemberNames = false;
+db.defaults({mac_list:[]}).write();
 
-function update() {
 
-    async
-        .waterfall([
 
-            (callback) => collector.update(callback),
+let users_in_the_hood = [];
 
-            (hosts, callback) => {
+setInterval(() => {
+    collector.update(function (err, _res) {
+        if (err) {
+            console.log(err);
+        }
+        console.log(_res);
+        //To UPPER
+        //REMOVE SPACES
+        users_in_the_hood = [];
+        for (let index = 0; index < _res.length; index++) {
+            const element = _res[index];
 
-                if (config.ip) {
-                    hosts = hosts.filter(host => (ip.toLong(host.ip) >= config.ip.from && ip.toLong(host.ip) <= config.ip.to));
-                }
-
-                if (lastDeviceCount !== hosts.length) {
-                    mqttClient.publish(config.mqtt.topics.deviceCount, '' + hosts.length, config.mqtt.options);
-                }
-
-                aliveHosts.insertHosts(hosts, (error, result) => callback(error));
-                lastDeviceCount = hosts.length;
-            },
-
-            (callback) => aliveHosts.getMembersSince(config.lookbackIntervalMs, callback),
-
-            (members, callback) => {
-
-                const memberNames = members.map(member => {
-                    if (member.privacy == 2) {
-                        return 'anonymous';
-                    }
-
-                    return member.nickname;
-                }).join(', ');
-
-                if (lastMemberNames !== memberNames) {
-                    mqttClient.publish(config.mqtt.topics.memberNames, memberNames, config.mqtt.options);
-                }
-
-                if (lastMemberCount !== members.length) {
-                    mqttClient.publish(config.mqtt.topics.memberPresent, '' + members.length, config.mqtt.options);
-
-                    if (members.length > 0 && lastMemberCount === 0) {
-                        mqttClient.publish(config.mqtt.topics.spaceStatus, 'open', config.mqtt.options);
-                    } else if (members.length === 0 && lastMemberCount > 0) {
-                        mqttClient.publish(config.mqtt.topics.spaceStatus, 'closed', config.mqtt.options);
-                    }
-                }
-
-                lastMemberCount = members.length;
-                lastMemberNames = memberNames;
-
-                return callback(null);
-            },
-
-            (callback) => {
-                aliveHosts.cleanup(config.cleanupIntervalMs, callback);
-                return callback(null);
+            var db_res = db.get('mac_list').find({ mac: String(element.mac).toUpperCase() }).value();
+            if (!db_res) {
+                console.log("mac_not_found" + String(element.mac).toUpperCase() + " in database");
+                continue;
             }
-        ], (error) => {
+            console.log("FOUND " + String(element.mac).toUpperCase() + " in database");
+            users_in_the_hood.push(db_res);
+        }
+        console.log("---- SCAN RESULT ---");
+        console.log(users_in_the_hood);
 
-            if (error) {
-                logger.error({
-                    module: 'main',
-                    event: 'finished',
-                    error: error
-                });
-            } else {
-                logger.info({
-                    module: 'main',
-                    event: 'finished'
-                });
-            }
-
-            setTimeout(update, config.intervalMs);
-        });
-}
-
-mysql.connect(() => {
-    update();
-});
+        if (users_in_the_hood) {
+            mqttClient.publish(config.mqtt.topics.spaceStatus,  JSON.stringify({ count: users_in_the_hood.length, hosts: users_in_the_hood }), config.mqtt.options);
+        } else {
+            mqttClient.publish(config.mqtt.topics.spaceStatus, JSON.stringify({ count: users_in_the_hood.length, hosts: users_in_the_hood }), config.mqtt.options);
+        }
+        mqttClient.publish(config.mqtt.topics.spaceStaffCount, ''+ String(users_in_the_hood.length), config.mqtt.options);
+        
+    });
+}, 5000*60);
 

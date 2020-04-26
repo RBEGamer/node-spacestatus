@@ -9,12 +9,12 @@ module.exports = {
 
     // Filter ip after collecting
     ip: {
-        from: ip.toLong('10.1.20.100'),
-        to: ip.toLong('10.1.20.255'),
+        from: ip.toLong('192.168.178.1'),
+        to: ip.toLong('192.168.178.254'),
     },
 
     mqtt: {
-        hostname: 'mqtt.core.bckspc.de',
+        hostname: '192.168.178.4',
 
         options: {
             qos: 1,
@@ -22,31 +22,16 @@ module.exports = {
         },
 
         topics: {
-            spaceStatus: 'sensor/space/status',
-            memberPresent: 'sensor/space/member/present',
-            memberNames: 'sensor/space/member/names',
-            deviceCount: 'sensor/space/member/deviceCount'
+            spaceStatus: 'sensor/presence/staffStatus',
+            spaceStaffCount: 'sensor/presence/staffCount'
         }
     },
 
-    mysql: {
-        hostname: 'violet.core.bckspc.de',
-        username: '',
-        password: '',
-        database: ''
-    },
+   
 
-    unifi: {
-        hostname: '',
-        port: 9443,
-        username: '',
-        password: '',
-        site: 'default',
-        network: '10.1.20.0/24',
-        timeoutMs: ms('20s')
-    },
+ 
 
     nmap: {
-        network: '10.1.20.100-255'
+        network: '192.168.178.1-255'
     }
 };

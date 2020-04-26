@@ -1,0 +1,16 @@
+{
+  "mac_list": [
+    {
+      "mac": "E8:FB:E9:74:83:BE",
+      "username": "Marcel",
+      "adapter": "WIFI",
+      "is_staff": true
+    },
+    {
+      "mac": "88:64:40:8B:F7:A7",
+      "username": "Lotte",
+      "adapter": "WIFI",
+      "is_staff": true
+    }
+  ]
+}
